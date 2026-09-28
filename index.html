@@ -235,6 +235,15 @@
     <!-- ==================== VIEW 2: QUIZ / SOAL LATIHAN ==================== -->
     <section id="quiz-view" class="hidden">
       
+      <!-- Banner Notifikasi Sesi Otomatis Dilanjutkan -->
+      <div id="auto-resume-toast" class="hidden mb-4 p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-xs transition-all animate-fade-in">
+        <div class="flex items-center space-x-2">
+          <span class="text-base">⚡</span>
+          <span id="auto-resume-toast-msg">Progres kamu berhasil dimuat otomatis dari nomor dan waktu terakhir.</span>
+        </div>
+        <button type="button" onclick="document.getElementById('auto-resume-toast').classList.add('hidden')" class="text-blue-500 hover:text-blue-700 font-bold ml-2 cursor-pointer">✕</button>
+      </div>
+
       <!-- Top Bar: Timer & Student Info -->
       <div class="sticky top-20 z-30 mb-6 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-sm border border-slate-200/90 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center space-x-3">
@@ -1033,8 +1042,8 @@
         remainingSeconds--;
         updateTimerUI();
         
-        // Autosave snapshot setiap detik berkala
-        if (remainingSeconds % 5 === 0) {
+        // Autosave snapshot berkala setiap 2 detik agar akurat hingga detik terakhir
+        if (remainingSeconds % 2 === 0) {
           triggerAutosave();
         }
 
@@ -1095,17 +1104,21 @@
         return;
       }
 
-      // 2. Cek apakah ada sesi berjalan yang tersimpan (Autosave)
+      // 2. Cek apakah ada sesi berjalan yang tersimpan (Autosave Langsung Masuk ke Progress Terakhir)
       const activeSession = await getAppRecord('active_quiz_session');
       if (activeSession && activeSession.studentName && activeSession.remainingSeconds > 0) {
-        const resumeBanner = document.getElementById('resume-session-banner');
-        const resumeText = document.getElementById('resume-banner-text');
-        resumeText.innerHTML = `Ditemukan sesi tersimpan atas nama <strong>${activeSession.studentName}</strong> (${activeSession.studentClass}) dengan sisa waktu <strong>${formatTimeDisplay(activeSession.remainingSeconds)}</strong>.`;
-        resumeBanner.classList.remove('hidden');
+        const deadlineCheck = checkDeadlineStatus();
+        if (!deadlineCheck.allowed) {
+          applyDeadlineUI();
+          return;
+        }
+
+        // Langsung arahkan masuk ke progres soal dan timer terakhir
+        await resumeSavedSession(true);
       }
     }
 
-    async function resumeSavedSession() {
+    async function resumeSavedSession(isAutoRestored = false) {
       const activeSession = await getAppRecord('active_quiz_session');
       if (!activeSession) return;
 
@@ -1123,6 +1136,16 @@
       document.getElementById('welcome-view').classList.add('hidden');
       document.getElementById('result-view').classList.add('hidden');
       document.getElementById('quiz-view').classList.remove('hidden');
+
+      // Tampilkan banner konfirmasi bahwa progres telah otomatis dimuat
+      if (isAutoRestored) {
+        const toast = document.getElementById('auto-resume-toast');
+        const toastMsg = document.getElementById('auto-resume-toast-msg');
+        if (toast && toastMsg) {
+          toastMsg.innerHTML = `Selamat datang kembali, <strong>${studentName}</strong>! Progres kamu otomatis dilanjutkan dari <strong>Soal Nomor ${currentQuestionIndex + 1}</strong> dengan sisa waktu <strong>${formatTimeDisplay(remainingSeconds)}</strong>.`;
+          toast.classList.remove('hidden');
+        }
+      }
 
       startTimer();
       renderNavigationPalette();
@@ -1724,6 +1747,13 @@
           if (e.key === 'Enter') startQuiz();
         });
       }
+
+      // Simpan progres seketika jika siswa berpindah aplikasi, menutup browser, atau lock screen
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          triggerAutosave();
+        }
+      });
     });
   </script>
 </body>
